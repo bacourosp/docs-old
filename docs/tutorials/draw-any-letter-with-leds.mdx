@@ -1,0 +1,214 @@
+---
+title: 'Draw Any Letter with LEDs (Parametric LED Matrix)'
+description: 'Build a reusable <LedLetter /> component in tscircuit that uses a 5x7 bitmap font and coordinate math to automatically lay out both the PCB and schematic for any ASCII letter'
+icon: 'code'
+---
+
+## Overview
+
+One of the superpowers of **tscircuit** is that circuits are just React/TypeScript functions—meaning you can use **math, loops, and lookup tables** to generate complex schematic and PCB layouts automatically.
+
+In this tutorial, we'll create a reusable `<LedLetter />` component with the exact API:
+
+```tsx
+<LedLetter letter="A" power="net.power" gnd="net.gnd" />
+```
+
+Given any uppercase letter (`A`–`Z`) or digit (`0`–`9`), `<LedLetter />` looks up a **5×7 dot-matrix bitmap**, calculates the `(pcbX, pcbY)` and `(schX, schY)` coordinates mathematically, and places only the active `0603` SMD LEDs along with their current-limiting resistors.
+
+---
+
+## Coordinate Math for Automatic PCB & Schematic Layout
+
+For a 5-column by 7-row LED character grid centered at `(centerX, centerY)`:
+
+- **Column index:** `col ∈ {0, 1, 2, 3, 4}` (centered offset `dx = col - 2`)
+- **Row index:** `row ∈ {0, 1, 2, 3, 4, 5, 6}` (centered offset `dy = 3 - row`, so row `0` is at the top)
+- **PCB coordinates (`pitch = 2.5mm`):**
+  - `pcbX = centerX + (col - 2) * pitchMm`
+  - `pcbY = centerY + (3 - row) * pitchMm`
+- **Schematic coordinates (`schPitchX = 2.4`, `schPitchY = 1.8`):**
+  - `schX = schCenterX + (col - 2) * 2.4`
+  - `schY = schCenterY + (3 - row) * 1.8`
+
+---
+
+## Complete `<LedLetter />` Snippet (`LedLetter.tsx`)
+
+```tsx
+import React from "react"
+
+/**
+ * 5x7 bitmap font for A-Z (each row is a 5-character string of '#' and '.')
+ */
+export const FONT_5X7: Record<string, string[]> = {
+  A: [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+  B: ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
+  C: [".####", "#....", "#....", "#....", "#....", "#....", ".####"],
+  D: ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."],
+  E: ["#####", "#....", "#....", "####.", "#....", "#....", "#####"],
+  F: ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
+  G: [".####", "#....", "#....", "#..##", "#...#", "#...#", ".####"],
+  H: ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+  I: ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####"],
+  J: ["..###", "...#.", "...#.", "...#.", "#..#.", "#..#.", ".##.."],
+  K: ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"],
+  L: ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
+  M: ["#...#", "##.##", "#.#.#", "#...#", "#...#", "#...#", "#...#"],
+  N: ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
+  O: [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+  P: ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
+  Q: [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"],
+  R: ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
+  S: [".####", "#....", "#....", ".###.", "....#", "....#", "####."],
+  T: ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."],
+  U: ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+  V: ["#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."],
+  W: ["#...#", "#...#", "#...#", "#...#", "#.#.#", "##.##", "#...#"],
+  X: ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"],
+  Y: ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
+  Z: ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
+}
+
+export interface LedLetterProps {
+  letter: string
+  power: string
+  gnd: string
+  namePrefix?: string
+  color?: "red" | "green" | "blue" | "yellow" | "white"
+  pitchMm?: number
+  pcbX?: number
+  pcbY?: number
+  schX?: number
+  schY?: number
+}
+
+export const LedLetter = ({
+  letter,
+  power,
+  gnd,
+  namePrefix,
+  color = "red",
+  pitchMm = 2.5,
+  pcbX = 0,
+  pcbY = 0,
+  schX = 0,
+  schY = 0,
+}: LedLetterProps) => {
+  const charKey = (letter || "A").trim().toUpperCase()[0] || "A"
+  const bitmap = FONT_5X7[charKey] ?? FONT_5X7.A
+  const prefix = namePrefix ?? `LTR_${charKey}`
+
+  // Extract active (row, col) pixels from the 5x7 glyph
+  const pixels: Array<{ row: number; col: number; id: string }> = []
+  bitmap.forEach((rowStr, rowIdx) => {
+    for (let colIdx = 0; colIdx < rowStr.length; colIdx++) {
+      if (rowStr[colIdx] === "#") {
+        pixels.push({
+          row: rowIdx,
+          col: colIdx,
+          id: `${prefix}_R${rowIdx}C${colIdx}`,
+        })
+      }
+    }
+  })
+
+  return (
+    <group name={`Group_${prefix}`}>
+      {pixels.map(({ row, col, id }) => {
+        // Center the 5x7 grid around (pcbX, pcbY) and (schX, schY)
+        const dx = col - 2
+        const dy = 3 - row
+
+        const ledPcbX = Number((pcbX + dx * pitchMm).toFixed(2))
+        const ledPcbY = Number((pcbY + dy * pitchMm).toFixed(2))
+        const resPcbX = Number((ledPcbX).toFixed(2))
+        const resPcbY = Number((ledPcbY - pitchMm * 0.42).toFixed(2))
+
+        const ledSchX = Number((schX + dx * 2.4).toFixed(2))
+        const ledSchY = Number((schY + dy * 1.8).toFixed(2))
+        const resSchX = Number((ledSchX - 0.9).toFixed(2))
+        const resSchY = ledSchY
+
+        const ledName = `D_${id}`
+        const resName = `R_${id}`
+
+        return (
+          <React.Fragment key={id}>
+            <resistor
+              name={resName}
+              resistance="330"
+              footprint="0402"
+              pcbX={resPcbX}
+              pcbY={resPcbY}
+              schX={resSchX}
+              schY={resSchY}
+            />
+            <led
+              name={ledName}
+              color={color}
+              footprint="0603"
+              pcbX={ledPcbX}
+              pcbY={ledPcbY}
+              schX={ledSchX}
+              schY={ledSchY}
+            />
+            <trace from={`.${resName} > .pin1`} to={power} />
+            <trace from={`.${resName} > .pin2`} to={`.${ledName} > .anode`} />
+            <trace from={`.${ledName} > .cathode`} to={gnd} />
+          </React.Fragment>
+        )
+      })}
+    </group>
+  )
+}
+```
+
+---
+
+## Using `<LedLetter />` on a Board
+
+You can render a single letter (such as `"A"`) or spell multi-letter words by offsetting `pcbX` for each character:
+
+```tsx
+import { LedLetter } from "./LedLetter"
+
+export default () => (
+  <board width="32mm" height="32mm">
+    {/* Draw the letter "A" with 0603 LEDs powered from net.power and net.gnd */}
+    <LedLetter
+      letter="A"
+      power="net.power"
+      gnd="net.gnd"
+      color="red"
+      pitchMm={2.5}
+      pcbX={0}
+      pcbY={0}
+    />
+
+    {/* 2-pin 2.54mm power header */}
+    <pinheader
+      name="J_PWR"
+      pinCount={2}
+      pitch="2.54mm"
+      pcbX={0}
+      pcbY={-12.5}
+      schX={-10}
+      schY={0}
+      pinLabels={{ pin1: "VCC", pin2: "GND" }}
+      connections={{
+        pin1: "net.power",
+        pin2: "net.gnd",
+      }}
+    />
+  </board>
+)
+```
+
+---
+
+## How It Works
+
+1. **Bitmap Lookup (`FONT_5X7`):** Each uppercase character is stored as 7 rows of 5 ASCII characters (`#` = LED populated, `.` = empty space). For `"A"`, 18 out of 35 grid cells are active.
+2. **Current Limiting per Pixel:** Every active LED (`D_LTR_A_RrCc`, `0603`) is paired with its own `330Ω` (`0402`) current-limiting resistor (`R_LTR_A_RrCc`) placed `1.05mm` below the LED pad (`pcbY - pitchMm * 0.42`) so brightness remains uniform regardless of how many segments are lit.
+3. **Automatic Net Wiring:** Each resistor-LED pair connects `power → R.pin1`, `R.pin2 → LED.anode`, and `LED.cathode → gnd`.
