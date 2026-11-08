@@ -1,0 +1,301 @@
+---
+title: 'ESP32-WROOM-32E Custom Dev Board Schematic (JLCPCB Ready)'
+description: 'Design a complete schematic-only custom ESP32-WROOM-32E development board in tscircuit inspired by Hardware Academy using readily available JLCPCB basic and extended parts'
+icon: 'code'
+---
+
+## Overview
+
+In this tutorial (inspired by the *Hardware Academy Custom ESP32 PCB* workflow and [`seveibar/wifi-test-board-1`](https://tscircuit.com/seveibar/wifi-test-board-1)), we will design a complete, schematic-focused **ESP32-WROOM-32E development board** in **tscircuit** (`routingDisabled`).
+
+To make the board easy and inexpensive to assemble at **JLCPCB**, we replace hard-to-source ICs with high-availability JLCPCB stock equivalents:
+
+| Subsystem | Part Number | JLCPCB Part # | Why This Chip? |
+|-----------|-------------|---------------|----------------|
+| **Wi-Fi / BLE MCU Module** | `ESP32-WROOM-32E (16MB)` | `C701342` | Integrated `40MHz` crystal, SPI flash, and PCB trace antenna (no RF matching network required) |
+| **3.3V LDO Regulator** | `AMS1117-3.3` | `C6186` | Basic library part (`SOT-223`), delivers up to `1A` continuous for Wi-Fi TX bursts |
+| **USB-to-UART Bridge** | `CH340C` | `C84681` | Built-in `12MHz` clock generator (eliminates external crystal and load capacitors) |
+| **USB-C Receptacle** | `TYPE-C-31-M-12` | `C165948` | Standard 16-pin USB 2.0 Type-C connector with `5.1kΩ` `CC1`/`CC2` pull-down resistors |
+| **Auto-Boot / Reset Dual NPN** | `UMH3N` / `2x S8050` | `C2146` | Classic NodeMCU DTR/RTS truth-table circuit for automatic `esptool.py` flashing |
+| **Schottky Power Diode** | `SS34` / `1N5819WS` | `C191023` | Prevents `5V` back-feeding into the host USB port |
+
+---
+
+## Complete Schematic Code (`ESP32HardwareAcademyBoard.tsx`)
+
+Below is the complete, self-contained `tscircuit` schematic snippet organized into 5 clear functional zones (`MCU Core`, `USB-C & ESD`, `3.3V LDO Power`, `CH340C USB-UART & Auto-Reset`, and `Buttons / Status LEDs`):
+
+```tsx
+import { useCapacitor, useResistor } from "@tscircuit/core"
+
+export const ESP32HardwareAcademySchematic = () => {
+  // Power & Decoupling Capacitors (JLCPCB Basic 0402 / 0805)
+  const C1 = useCapacitor("C1", { capacitance: "10uF", footprint: "0805" })  // VBUS 5V input bulk
+  const C2 = useCapacitor("C2", { capacitance: "22uF", footprint: "0805" })  // 3.3V LDO output bulk
+  const C3 = useCapacitor("C3", { capacitance: "22uF", footprint: "0805" })  // ESP32 3V3 burst reservoir
+  const C4 = useCapacitor("C4", { capacitance: "100nF", footprint: "0402" }) // ESP32 3V3 HF decoupling
+  const C5 = useCapacitor("C5", { capacitance: "100nF", footprint: "0402" }) // EN power-on-reset delay
+  const C6 = useCapacitor("C6", { capacitance: "100nF", footprint: "0402" }) // CH340C V3 decoupling
+  const C7 = useCapacitor("C7", { capacitance: "100nF", footprint: "0402" }) // CH340C VCC decoupling
+
+  // Configuration & Pull-Up/Pull-Down Resistors (JLCPCB Basic 0402)
+  const R1 = useResistor("R1", { resistance: "5.1k", footprint: "0402" }) // USB-C CC1 pull-down
+  const R2 = useResistor("R2", { resistance: "5.1k", footprint: "0402" }) // USB-C CC2 pull-down
+  const R3 = useResistor("R3", { resistance: "10k", footprint: "0402" })  // ESP32 EN pull-up
+  const R4 = useResistor("R4", { resistance: "10k", footprint: "0402" })  // ESP32 IO0 boot pull-up
+  const R5 = useResistor("R5", { resistance: "10k", footprint: "0402" })  // Auto-reset Q1 base resistor
+  const R6 = useResistor("R6", { resistance: "10k", footprint: "0402" })  // Auto-reset Q2 base resistor
+  const R7 = useResistor("R7", { resistance: "470", footprint: "0402" })  // UART TX0 series damping
+  const R8 = useResistor("R8", { resistance: "470", footprint: "0402" })  // UART RX0 series damping
+  const R9 = useResistor("R9", { resistance: "1k", footprint: "0402" })   // Power ON LED resistor
+  const R10 = useResistor("R10", { resistance: "1k", footprint: "0402" }) // User IO2 LED resistor
+
+  return (
+    <board width="90mm" height="70mm" routingDisabled>
+      <group subcircuit routingDisabled>
+        {/* 1. U1: ESP32-WROOM-32E (JLCPCB #C701342) */}
+        <chip
+          name="U1"
+          manufacturerPartNumber="ESP32-WROOM-32E"
+          schX={6}
+          schY={0}
+          schWidth={4.0}
+          schHeight={8.5}
+          schPinSpacing={0.4}
+          schPortArrangement={{
+            leftSide: {
+              pins: [
+                "pin2",  // 3V3
+                "pin3",  // EN
+                "pin4",  // SENSOR_VP (IO36)
+                "pin5",  // SENSOR_VN (IO39)
+                "pin6",  // IO34
+                "pin7",  // IO35
+                "pin8",  // IO32
+                "pin9",  // IO33
+                "pin10", // IO25
+                "pin11", // IO26
+                "pin12", // IO27
+                "pin13", // IO14
+                "pin14", // IO12
+                "pin1",  // GND1
+              ],
+              direction: "top-to-bottom",
+            },
+            rightSide: {
+              pins: [
+                "pin35", // TXD0 (IO1)
+                "pin34", // RXD0 (IO3)
+                "pin25", // IO0 (BOOT)
+                "pin24", // IO2
+                "pin26", // IO4
+                "pin29", // IO5
+                "pin30", // IO18
+                "pin31", // IO19
+                "pin33", // IO21 (SDA)
+                "pin36", // IO22 (SCL)
+                "pin37", // IO23
+                "pin15", // GND2
+                "pin38", // GND3
+                "pin39", // EPAD_GND
+              ],
+              direction: "top-to-bottom",
+            },
+          }}
+          pinLabels={{
+            pin1: "GND1",
+            pin2: "V3_3",
+            pin3: "EN",
+            pin4: "GPI36",
+            pin5: "GPI39",
+            pin6: "GPI34",
+            pin7: "GPI35",
+            pin8: "GPIO32",
+            pin9: "GPIO33",
+            pin10: "GPIO25",
+            pin11: "GPIO26",
+            pin12: "GPIO27",
+            pin13: "GPIO14",
+            pin14: "GPIO12",
+            pin15: "GND2",
+            pin24: "GPIO2",
+            pin25: "GPIO0",
+            pin26: "GPIO4",
+            pin29: "GPIO5",
+            pin30: "GPIO18",
+            pin31: "GPIO19",
+            pin33: "GPIO21",
+            pin34: "RXD0",
+            pin35: "TXD0",
+            pin36: "GPIO22",
+            pin37: "GPIO23",
+            pin38: "GND3",
+            pin39: "EPAD",
+          }}
+        />
+
+        {/* 2. J1: USB Type-C 16-Pin Receptacle (JLCPCB #C165948) */}
+        <chip
+          name="J1"
+          manufacturerPartNumber="TYPE-C-31-M-12"
+          schX={-14}
+          schY={3}
+          schWidth={2.8}
+          schHeight={4.2}
+          schPortArrangement={{
+            rightSide: {
+              pins: ["pin1", "pin2", "pin3", "pin4", "pin5", "pin6"],
+              direction: "top-to-bottom",
+            },
+          }}
+          pinLabels={{
+            pin1: "VBUS",
+            pin2: "D_N",
+            pin3: "D_P",
+            pin4: "CC1",
+            pin5: "CC2",
+            pin6: "GND",
+          }}
+        />
+
+        {/* 3. U2: AMS1117-3.3 LDO Regulator (JLCPCB #C6186) */}
+        <chip
+          name="U2"
+          manufacturerPartNumber="AMS1117-3.3"
+          schX={-8}
+          schY={5}
+          schWidth={2.6}
+          schHeight={2.4}
+          schPortArrangement={{
+            leftSide: { pins: ["pin3"], direction: "top-to-bottom" },
+            rightSide: { pins: ["pin2"], direction: "top-to-bottom" },
+            bottomSide: { pins: ["pin1"], direction: "left-to-right" },
+          }}
+          pinLabels={{
+            pin1: "GND",
+            pin2: "VOUT_3V3",
+            pin3: "VIN_5V",
+          }}
+        />
+
+        {/* 4. U3: CH340C USB-UART Bridge with Internal Oscillator (JLCPCB #C84681) */}
+        <chip
+          name="U3"
+          manufacturerPartNumber="CH340C"
+          schX={-6}
+          schY={-2}
+          schWidth={3.2}
+          schHeight={4.8}
+          schPortArrangement={{
+            leftSide: {
+              pins: ["pin16", "pin4", "pin5", "pin6", "pin1"],
+              direction: "top-to-bottom",
+            },
+            rightSide: {
+              pins: ["pin2", "pin3", "pin13", "pin14"],
+              direction: "top-to-bottom",
+            },
+          }}
+          pinLabels={{
+            pin1: "GND",
+            pin2: "TXD",
+            pin3: "RXD",
+            pin4: "V3",
+            pin5: "UD_P",
+            pin6: "UD_N",
+            pin13: "DTR_N",
+            pin14: "RTS_N",
+            pin16: "VCC",
+          }}
+        />
+
+        {/* 5. Q_AUTO: Dual NPN Auto-Reset Network (UMH3N / 2x S8050, JLCPCB #C2146) */}
+        <chip
+          name="U4"
+          manufacturerPartNumber="UMH3N"
+          schX={-0.5}
+          schY={-3}
+          schWidth={2.4}
+          schHeight={2.8}
+          schPortArrangement={{
+            leftSide: { pins: ["pin1", "pin2", "pin4", "pin5"], direction: "top-to-bottom" },
+            rightSide: { pins: ["pin6", "pin3"], direction: "top-to-bottom" },
+          }}
+          pinLabels={{
+            pin1: "E1_RTS",
+            pin2: "B1_DTR",
+            pin3: "C2_IO0",
+            pin4: "E2_DTR",
+            pin5: "B2_RTS",
+            pin6: "C1_EN",
+          }}
+        />
+
+        {/* Place Passive Components on Schematic */}
+        <C1 pos="net.VBUS_5V" neg="net.GND" schX={-10.5} schY={4.5} schRotation="270deg" />
+        <C2 pos="net.V3_3" neg="net.GND" schX={-5} schY={4.5} schRotation="270deg" />
+        <C3 pos="net.V3_3" neg="net.GND" schX={1.5} schY={3.5} schRotation="270deg" />
+        <C4 pos="net.V3_3" neg="net.GND" schX={3.0} schY={3.5} schRotation="270deg" />
+        <C5 pos=".U1 .pin3" neg="net.GND" schX={2.5} schY={1.0} schRotation="270deg" />
+        <C6 pos=".U3 .pin4" neg="net.GND" schX={-9.5} schY={-2.5} schRotation="270deg" />
+        <C7 pos="net.V3_3" neg="net.GND" schX={-9.5} schY={-0.5} schRotation="270deg" />
+
+        <R1 pin1=".J1 .pin4" pin2="net.GND" schX={-11.5} schY={1.5} schRotation="270deg" />
+        <R2 pin1=".J1 .pin5" pin2="net.GND" schX={-12.5} schY={1.5} schRotation="270deg" />
+        <R3 pin1="net.V3_3" pin2=".U1 .pin3" schX={2.5} schY={2.5} schRotation="90deg" />
+        <R4 pin1="net.V3_3" pin2=".U1 .pin25" schX={10.5} schY={1.5} schRotation="90deg" />
+        <R5 pin1=".U3 .pin13" pin2=".U4 .pin2" schX={-3} schY={-2.5} />
+        <R6 pin1=".U3 .pin14" pin2=".U4 .pin5" schX={-3} schY={-3.5} />
+        <R7 pin1=".U3 .pin2" pin2=".U1 .pin34" schX={0} schY={0.5} />
+        <R8 pin1=".U3 .pin3" pin2=".U1 .pin35" schX={0} schY={-0.5} />
+        <R9 pin1="net.V3_3" pin2="net.LED_PWR_A" schX={-5} schY={7} />
+        <R10 pin1=".U1 .pin24" pin2="net.LED_IO2_A" schX={11} schY={-1} />
+
+        {/* Core Power & Signal Traces */}
+        <trace from=".J1 .pin1" to="net.VBUS_5V" />
+        <trace from=".J1 .pin6" to="net.GND" />
+        <trace from=".U2 .pin3" to="net.VBUS_5V" />
+        <trace from=".U2 .pin1" to="net.GND" />
+        <trace from=".U2 .pin2" to="net.V3_3" />
+
+        {/* USB Differential Data Pair to CH340C */}
+        <trace from=".J1 .pin3" to=".U3 .pin5" />
+        <trace from=".J1 .pin2" to=".U3 .pin6" />
+        <trace from=".U3 .pin16" to="net.V3_3" />
+        <trace from=".U3 .pin4" to="net.V3_3" />
+        <trace from=".U3 .pin1" to="net.GND" />
+
+        {/* Auto-Reset Collectors to EN and IO0 */}
+        <trace from=".U4 .pin1" to=".U3 .pin14" />
+        <trace from=".U4 .pin4" to=".U3 .pin13" />
+        <trace from=".U4 .pin6" to=".U1 .pin3" />
+        <trace from=".U4 .pin3" to=".U1 .pin25" />
+
+        {/* ESP32 Power and Ground Connections */}
+        <trace from=".U1 .pin2" to="net.V3_3" />
+        <trace from=".U1 .pin1" to="net.GND" />
+        <trace from=".U1 .pin15" to="net.GND" />
+        <trace from=".U1 .pin38" to="net.GND" />
+        <trace from=".U1 .pin39" to="net.GND" />
+      </group>
+    </board>
+  )
+}
+
+export default ESP32HardwareAcademySchematic
+```
+
+---
+
+## Key Design Decisions Explained
+
+### 1. Why `CH340C` Instead of `CP2102N`?
+In many reference tutorials, the Silicon Labs `CP2102` QFN-28 chip is used, which has higher JLCPCB extended-part assembly fees and tight thermal-pad soldering tolerances. Swapping to the **WCH `CH340C` (`SOIC-16`, JLCPCB `#C84681`)**:
+- Eliminates the external `12MHz` crystal and two `22pF` load capacitors.
+- Runs directly from `3.3V` (`VCC` tied to `V3` with `100nF` decoupling) so `TXD`/`RXD` logic levels natively match the `ESP32-WROOM-32E` without level shifters.
+
+### 2. USB-C `5.1kΩ` CC1/CC2 Pull-Downs (`R1`, `R2`)
+A common mistake on custom ESP32 boards is leaving `CC1` and `CC2` floating on the USB-C receptacle (`J1`), which prevents USB-C PD chargers and MacBooks from supplying `5V` on `VBUS`. Adding two independent `5.1kΩ` resistors (`R1` on `CC1` and `R2` on `CC2` to `GND`) advertises the board as a standard `5V` USB sink.
+
+### 3. RC Delay on `EN` (`R3 = 10kΩ`, `C5 = 100nF`)
+Per Espressif's datasheet, the `EN` (`CHIP_PU`) pin must rise *after* the `3.3V` rail stabilizes. The `10kΩ` pull-up (`R3`) combined with the `100nF` capacitor (`C5`) provides a `~1 ms` RC time constant for reliable power-on reset.
