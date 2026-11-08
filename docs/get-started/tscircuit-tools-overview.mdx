@@ -1,0 +1,106 @@
+---
+title: "User-Facing Tools Overview"
+description: "Explore the complete ecosystem of tscircuit user-facing tools: CLI, RunFrame, PCB & Schematic Viewers, Autorouting, and CAD Format Converters"
+---
+
+## Overview
+
+The **tscircuit** ecosystem is modular: every stage of hardware design—from authoring React/TypeScript components to schematic capture, interactive PCB visualization, cloud autorouting, and manufacturing export—is powered by dedicated open-source tools that revolve around **Circuit JSON** (`@tscircuit/soup`).
+
+| Tool / Package | Primary Role | Where to Use It |
+|----------------|--------------|-----------------|
+| **[`tscircuit.com` (Snippets & Registry)](https://tscircuit.com)** | Browser IDE, AI circuit playground, and npm-compatible component registry | Web browser (`tscircuit.com/editor`) |
+| **[`@tscircuit/cli` (`tsci`)](https://github.com/tscircuit/cli)** | Local project initializer, live dev server, test runner, and package publisher | Terminal (`npm install -g @tscircuit/cli`) |
+| **[`@tscircuit/core`](https://github.com/tscircuit/core)** | React fiber renderer that evaluates JSX (`<board>`, `<chip>`, `<trace>`) into Circuit JSON | Imported in `.tsx` circuit files |
+| **[`@tscircuit/runframe`](https://github.com/tscircuit/runframe)** | All-in-one embeddable UI combining code execution, schematic, PCB, 3D, BOM, and DRC tabs | Web apps, docs, and `tsci dev` |
+| **[`@tscircuit/pcb-viewer`](https://github.com/tscircuit/pcb-viewer)** | Interactive 2D PCB canvas with layer toggles, trace inspection, and rat's-nest overlays | React apps & `RunFrame` PCB tab |
+| **[`@tscircuit/schematic-viewer`](https://github.com/tscircuit/schematic-viewer)** | Interactive schematic diagram renderer with net highlighting and symbol layout | React apps & `RunFrame` Schematic tab |
+| **[`@tscircuit/3d-viewer`](https://github.com/tscircuit/3d-viewer)** | Three.js/React-Three-Fiber 3D board & SMD package visualizer (`jscad-electronics`) | React apps & `RunFrame` 3D tab |
+| **[`autorouting.com` / `@tscircuit/autorouting`](https://github.com/tscircuit/autorouting)** | Cloud & local PCB trace autorouters (`ijump`, capacity-mesh, and Freerouting DSN compatible) | `@tscircuit/core` & `autorouting.com` |
+| **Format Converters (`circuit-json-to-*`)** | Bidirectional converters for Gerber, Pick-and-Place, BOM, KiCad, Specctra DSN, and SVG | CLI exports & CI pipelines |
+
+---
+
+## 1. Authoring & Execution (`@tscircuit/core` & `@tscircuit/cli`)
+
+### `@tscircuit/core`
+`@tscircuit/core` is the runtime engine that turns declarative React components (`<board />`, `<chip />`, `<resistor />`, `<capacitor />`, `<trace />`) into **Circuit JSON** (`AnyCircuitElement[]`), running layout calculation, schematic symbol placement, and PCB trace routing.
+
+```tsx
+import { Circuit } from "@tscircuit/core"
+
+const circuit = new Circuit()
+circuit.add(
+  <board width="20mm" height="20mm">
+    <resistor name="R1" resistance="1k" footprint="0402" pcbX={-3} pcbY={0} />
+    <led name="D1" color="red" footprint="0603" pcbX={3} pcbY={0} />
+    <trace from=".R1 > .pin2" to=".D1 > .anode" />
+  </board>
+)
+
+await circuit.renderUntilSettled()
+const circuitJson = circuit.getCircuitJson()
+```
+
+### `@tscircuit/cli` (`tsci`)
+The command-line interface lets you develop circuits locally with Git version control, TypeScript autocomplete, and automated tests:
+
+```bash
+# Install the CLI globally
+npm install -g @tscircuit/cli
+
+# Bootstrap a new circuit project
+tsci init my-board
+
+# Launch the local interactive RunFrame preview server
+tsci dev
+
+# Publish a reusable component to the tscircuit registry
+tsci publish
+```
+
+---
+
+## 2. Interactive Visualization (`runframe`, `pcb-viewer`, `schematic-viewer`, `3d-viewer`)
+
+### `@tscircuit/runframe`
+`RunFrame` is the unified development interface used inside `tscircuit.com` and `tsci dev`. It executes circuit code inside a web worker (`@tscircuit/eval`) and renders synchronized tabs for **PCB**, **Schematic**, **3D View**, **Bill of Materials (BOM)**, **Circuit JSON**, and **Error/DRC diagnostics**.
+
+### `@tscircuit/pcb-viewer`
+Renders `CircuitJson` onto an interactive 2D PCB canvas supporting:
+- Multi-layer visibility filtering (`top`, `bottom`, `inner1`, `inner2`)
+- Interactive component dragging and pad/trace hover inspection
+- Design Rule Check (DRC) trace clearance warnings
+
+```tsx
+import { PCBViewer } from "@tscircuit/pcb-viewer"
+
+export const MyPcbPreview = ({ soup }: { soup: any[] }) => (
+  <div style={{ height: 500 }}>
+    <PCBViewer soup={soup} />
+  </div>
+)
+```
+
+### `@tscircuit/schematic-viewer` & `@tscircuit/3d-viewer`
+- **`@tscircuit/schematic-viewer`** renders clean electronic schematics from `schematic_component`, `schematic_port`, and `schematic_trace` elements in Circuit JSON.
+- **`@tscircuit/3d-viewer`** combines `@tscircuit/footprinter` and `jscad-electronics` to render realistic 3D models of SMD packages (`SOIC`, `QFN`, `0402`, `USB-C`, pin headers) on the FR4 substrate.
+
+---
+
+## 3. Autorouting (`autorouting.com` & `@tscircuit/autorouting`)
+
+When connecting pads with `<trace from="..." to="..." />`, `tscircuit` automatically computes obstacle-avoiding copper paths and vias using its built-in and cloud autorouting engines:
+- **Simple Grid / High-Speed Ijump Autorouter (`@tscircuit/autorouting`):** Fast deterministic multi-layer A* and intersection-jump (`ijump`) routing directly in JavaScript/TypeScript.
+- **`autorouting.com`:** Cloud API endpoints and dataset benchmarks for solving dense multi-layer boards and Specctra `.dsn` / `.ses` sessions.
+
+---
+
+## 4. CAD & Manufacturing Converters
+
+Because every `tscircuit` design compiles to **Circuit JSON**, a rich suite of converter libraries translates between `tscircuit` and traditional EDA/manufacturing formats:
+
+- **[`circuit-to-svg`](https://github.com/tscircuit/circuit-to-svg):** Generates crisp SVG snapshots of schematics and PCBs for GitHub PR previews and automated visual regression tests (`bun test`).
+- **[`circuit-json-to-gerber`](https://github.com/tscircuit/circuit-json-to-gerber):** Exports RS-274X Gerber and Excellon drill files ready for JLCPCB or PCBWay fabrication.
+- **[`circuit-json-to-bom-csv`](https://github.com/tscircuit/circuit-json-to-bom-csv) & [`circuit-json-to-pnp-csv`](https://github.com/tscircuit/circuit-json-to-pnp-csv):** Exports Bill of Materials (BOM) and Pick-and-Place (CPL) spreadsheets for turnkey PCBA assembly.
+- **[`dsn-converter`](https://github.com/tscircuit/dsn-converter) & [`kicad-to-circuit-json`](https://github.com/tscircuit/kicad-converter):** Bridges Circuit JSON with Specctra DSN autorouters and KiCad `.kicad_pcb` / `.kicad_sch` files.
